@@ -34,6 +34,8 @@ const FragmentCard = ({
 }: FragmentCardProps) => {
   return (
     <button
+      aria-label={`View code fragment: ${fragment.title}`}
+      aria-pressed={isActiveFragment}
       className={cn(
         "flex items-start text-start gap-2 border rounded-lg bg-muted w-fit p-3 hover:bg-secondary transition-colors",
         isActiveFragment &&
