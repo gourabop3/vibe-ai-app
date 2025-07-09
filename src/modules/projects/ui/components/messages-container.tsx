@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { useInngestSubscription } from "@inngest/realtime/hooks";
 
 import { useTRPC } from "@/trpc/client";
 import { Fragment } from "@/generated/prisma";
+import { useCustomInngestSubscription } from "@/hooks/use-custom-inngest-subscription";
 
 import { MessageCard } from "./message-card";
 import { MessageForm } from "./message-form";
@@ -32,41 +32,62 @@ const MessagesContainer = ({
     })
   );
 
-  const { latestData } = useInngestSubscription({
-    refreshToken: async () => {
-      try {
-        const mutationOptions =
-          trpc.messages.getFragmentSubscriptionToken.mutationOptions();
-        const mutationFn = mutationOptions.mutationFn;
+  const refreshToken = useCallback(async () => {
+    try {
+      const mutationOptions =
+        trpc.messages.getFragmentSubscriptionToken.mutationOptions();
+      const mutationFn = mutationOptions.mutationFn;
 
-        if (!mutationFn) {
-          console.error("Mutation function is not available");
-          return null;
-        }
-
-        const token = await mutationFn({ projectId });
-
-        return token;
-      } catch (error) {
-        console.error("Failed to get subscription token:", error);
+      if (!mutationFn) {
+        console.error("Mutation function is not available");
         return null;
       }
-    },
+
+      const token = await mutationFn({ projectId });
+
+      return token;
+    } catch (error) {
+      console.error("Failed to get subscription token:", error);
+      return null;
+    }
+  }, [trpc.messages.getFragmentSubscriptionToken, projectId]);
+
+  const { latestData, error, cleanup } = useCustomInngestSubscription({
+    refreshToken,
+    enabled: true,
   });
+
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
+
+  useEffect(() => {
+    if (error) {
+      console.error("Subscription error:", error);
+    }
+  }, [error]);
+
+  const invalidateMessages = useCallback(
+    () =>
+      queryClient.invalidateQueries(
+        trpc.messages.getMany.queryOptions({ projectId })
+      ),
+    [queryClient, trpc.messages.getMany, projectId]
+  );
 
   useEffect(() => {
     if (!latestData) return;
 
     if (latestData.topic === "fragment") {
-      queryClient.invalidateQueries(
-        trpc.messages.getMany.queryOptions({ projectId })
-      );
+      invalidateMessages();
     }
 
     if (latestData.topic === "error") {
       console.log("Agent error:", latestData.data.message);
     }
-  }, [latestData]);
+  }, [latestData, invalidateMessages]);
 
   useEffect(() => {
     const lastAssistantMessage = messages.findLast(
