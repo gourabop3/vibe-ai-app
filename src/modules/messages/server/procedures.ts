@@ -6,7 +6,6 @@ import { prisma } from "@/lib/db";
 import { inngest } from "@/inngest/client";
 import { consumeCredits } from "@/lib/usage";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
-import { auth } from "@clerk/nextjs/server";
 import { fragmentChannel } from "@/inngest/functions";
 
 export const messagesRouter = createTRPCRouter({

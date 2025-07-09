@@ -2,27 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Realtime } from "@inngest/realtime";
 import { useInngestSubscription } from "@inngest/realtime/hooks";
 
-type InngestMessage =
-  | {
-      topic: string;
-      channel: string;
-      data: any;
-      runId?: string;
-      fnId?: string;
-      createdAt: Date;
-      envId?: string;
-      kind: "data";
-    }
-  | {
-      topic: string;
-      channel: string;
-      data: any;
-      kind: "datastream-start" | "datastream-end" | "chunk";
-      streamId: string;
-      stream: ReadableStream<any>;
-    };
-
-export function useCustomInngestSubscription<T>({
+export function useCustomInngestSubscription({
   token,
   refreshToken,
   enabled = true,
