@@ -1,10 +1,13 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { getSubscriptionToken } from "@inngest/realtime";
 
 import { prisma } from "@/lib/db";
 import { inngest } from "@/inngest/client";
 import { consumeCredits } from "@/lib/usage";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
+import { auth } from "@clerk/nextjs/server";
+import { fragmentChannel } from "@/inngest/functions";
 
 export const messagesRouter = createTRPCRouter({
   getMany: protectedProcedure
@@ -94,9 +97,26 @@ export const messagesRouter = createTRPCRouter({
         data: {
           value: input.value,
           projectId: input.projectId,
+          userId: ctx.auth.userId,
         },
       });
 
       return createdMessage;
+    }),
+  getFragmentSubscriptionToken: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx }) => {
+      const userId = ctx.auth.userId;
+
+      const token = await getSubscriptionToken(inngest, {
+        channel: fragmentChannel(userId),
+        topics: ["fragment", "error"],
+      });
+
+      return token;
     }),
 });

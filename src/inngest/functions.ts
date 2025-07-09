@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { Sandbox } from "@e2b/code-interpreter";
+import { channel, topic } from "@inngest/realtime";
 import {
   openai,
   createAgent,
@@ -27,10 +28,36 @@ interface AgentState {
   files: { [path: string]: string };
 }
 
+export const fragmentChannel = channel((userId: string) => `user:${userId}`)
+  .addTopic(
+    topic("fragment").schema(
+      z.object({
+        projectId: z.string(),
+        status: z.literal("completed"),
+        message: z.string(),
+        fragmentId: z.string().uuid().optional(),
+        messageId: z.string().uuid(),
+        sandboxUrl: z.string().url().optional(),
+        title: z.string().optional(),
+        timestamp: z.date(),
+      })
+    )
+  )
+  .addTopic(
+    topic("error").schema(
+      z.object({
+        projectId: z.string().uuid(),
+        status: z.literal("error"),
+        message: z.string(),
+        timestamp: z.date(),
+      })
+    )
+  );
+
 export const codeAgentFunction = inngest.createFunction(
   { id: "code-agent" },
   { event: "code-agent/run" },
-  async ({ event, step }) => {
+  async ({ event, step, publish }) => {
     const sandboxId = await step.run("get-sandbox-id", async () => {
       const sandbox = await Sandbox.create("vibe-ai-app-nextjs-v3");
       await sandbox.setTimeout(SANDBOX_TIMEOUT);
@@ -249,9 +276,11 @@ export const codeAgentFunction = inngest.createFunction(
       return `https://${host}`;
     });
 
+    const timestamp = new Date();
+
     await step.run("save-result", async () => {
       if (isError) {
-        return await prisma.message.create({
+        const errorMsg = await prisma.message.create({
           data: {
             projectId: event.data.projectId,
             content: "Something went wrong. Please try again.",
@@ -259,9 +288,20 @@ export const codeAgentFunction = inngest.createFunction(
             type: "ERROR",
           },
         });
+
+        await publish(
+          fragmentChannel(event.data.userId).error({
+            projectId: event.data.projectId,
+            status: "error",
+            message: "Something went wrong. Please try again.",
+            timestamp: timestamp,
+          })
+        );
+
+        return errorMsg;
       }
 
-      await prisma.message.create({
+      const savedMsg = await prisma.message.create({
         data: {
           projectId: event.data.projectId,
           content: parseAgentOutput(responseOutput),
@@ -275,7 +315,23 @@ export const codeAgentFunction = inngest.createFunction(
             },
           },
         },
+        include: {
+          fragment: true,
+        },
       });
+
+      await publish(
+        fragmentChannel(event.data.userId).fragment({
+          projectId: event.data.projectId,
+          status: "completed",
+          message: "Fragment generated successfully!",
+          fragmentId: savedMsg.fragment?.id,
+          messageId: savedMsg.id,
+          sandboxUrl: savedMsg.fragment?.sandboxUrl,
+          title: savedMsg.fragment?.title,
+          timestamp: timestamp,
+        })
+      );
     });
 
     return {
