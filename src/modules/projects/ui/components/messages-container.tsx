@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useInngestSubscription } from "@inngest/realtime/hooks";
 
 import { useTRPC } from "@/trpc/client";
 import { Fragment } from "@/generated/prisma";
@@ -21,18 +22,51 @@ const MessagesContainer = ({
 }: Props) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastAssistantMessageIdRef = useRef<string | null>(null);
+
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
   const { data: messages } = useSuspenseQuery(
-    trpc.messages.getMany.queryOptions(
-      {
-        projectId,
-      },
-      {
-        // Temporary live message update
-        refetchInterval: 5000,
-      }
-    )
+    trpc.messages.getMany.queryOptions({
+      projectId,
+    })
   );
+
+  const { latestData } = useInngestSubscription({
+    refreshToken: async () => {
+      try {
+        const mutationOptions =
+          trpc.messages.getFragmentSubscriptionToken.mutationOptions();
+        const mutationFn = mutationOptions.mutationFn;
+
+        if (!mutationFn) {
+          console.error("Mutation function is not available");
+          return null;
+        }
+
+        const token = await mutationFn({ projectId });
+
+        return token;
+      } catch (error) {
+        console.error("Failed to get subscription token:", error);
+        return null;
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!latestData) return;
+
+    if (latestData.topic === "fragment") {
+      queryClient.invalidateQueries(
+        trpc.messages.getMany.queryOptions({ projectId })
+      );
+    }
+
+    if (latestData.topic === "error") {
+      console.log("Agent error:", latestData.data.message);
+    }
+  }, [latestData]);
 
   useEffect(() => {
     const lastAssistantMessage = messages.findLast(
