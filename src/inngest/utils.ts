@@ -10,9 +10,17 @@ export async function getSandbox(sandboxId: string) {
 }
 
 export function lastAssistantTextMessageContent(result: AgentResult) {
+  if (!result.output || !Array.isArray(result.output)) {
+    return undefined;
+  }
+
   const lastAssistantTextMessageIndex = result.output.findLastIndex(
     (message) => message.role === "assistant"
   );
+
+  if (lastAssistantTextMessageIndex === -1) {
+    return undefined;
+  }
 
   const message = result.output[lastAssistantTextMessageIndex] as
     | TextMessage
@@ -21,7 +29,12 @@ export function lastAssistantTextMessageContent(result: AgentResult) {
   return message?.content
     ? typeof message.content === "string"
       ? message.content
-      : message.content.map((c) => c.text).join("")
+      : Array.isArray(message.content)
+      ? message.content
+          .filter((c) => c && typeof c.text === "string")
+          .map((c) => c.text)
+          .join("")
+      : undefined
     : undefined;
 }
 
