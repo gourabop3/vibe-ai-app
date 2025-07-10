@@ -9,7 +9,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Trash2Icon } from "lucide-react";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Project } from "@/generated/prisma";
 import {
@@ -30,23 +30,20 @@ export const ProjectsList = () => {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   const { data: projects } = useQuery(trpc.projects.getMany.queryOptions());
-  const {
-    isPending: isProjectDeletePending,
-    mutate: deleteMutation,
-    data: project,
-  } = useMutation(
-    trpc.projects.deleteOne.mutationOptions({
-      onSuccess: () => {
-        queryClient.invalidateQueries(trpc.projects.getMany.queryOptions());
-        setDeleteModalOpen(false);
-        setProjectToDelete(null);
-      },
-      onError: (error) => {
-        console.error("Failed to delete project:", error);
-        toast.error(error.message);
-      },
-    })
-  );
+  const { isPending: isProjectDeletePending, mutate: deleteMutation } = 
+    useMutation(
+      trpc.projects.deleteOne.mutationOptions({
+        onSuccess: () => {
+          queryClient.invalidateQueries(trpc.projects.getMany.queryOptions());
+          setDeleteModalOpen(false);
+          setProjectToDelete(null);
+        },
+        onError: (error) => {
+          console.error("Failed to delete project:", error);
+          toast.error(error.message);
+        },
+      })
+    );
 
   if (!user) return null;
 
