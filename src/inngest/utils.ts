@@ -31,7 +31,9 @@ export function lastAssistantTextMessageContent(result: AgentResult) {
       ? message.content
       : Array.isArray(message.content)
       ? message.content
-          .filter((c) => c && typeof c.text === "string")
+          .filter(
+            (c) => c && typeof c.text === "string" && c.text.trim() !== ""
+          )
           .map((c) => c.text)
           .join("")
       : undefined

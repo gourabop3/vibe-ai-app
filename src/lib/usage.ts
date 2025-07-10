@@ -4,7 +4,7 @@ import { RateLimiterPrisma } from "rate-limiter-flexible";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
-const userIdSchema = z.string().min(1, "User ID is required");
+const userIdSchema = z.string().min(1, "User ID must be a non-empty string");
 
 export const GENERATION_COST = 1;
 const FREE_POINTS = 2;
