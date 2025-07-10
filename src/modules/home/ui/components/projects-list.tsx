@@ -30,7 +30,7 @@ export const ProjectsList = () => {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   const { data: projects } = useQuery(trpc.projects.getMany.queryOptions());
-  const { isPending: isProjectDeletePending, mutate: deleteMutation } = 
+  const { isPending: isProjectDeletePending, mutate: deleteMutation } =
     useMutation(
       trpc.projects.deleteOne.mutationOptions({
         onSuccess: () => {
@@ -111,36 +111,36 @@ export const ProjectsList = () => {
             >
               <Trash2Icon className="h-4 w-4" />
             </Button>
-
-            <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Delete Project</DialogTitle>
-                  <DialogDescription>
-                    Are you sure you want to delete &quot;
-                    {projectToDelete?.name}&quot;? This action cannot be undone.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={handleCancelDelete}
-                    disabled={isProjectDeletePending}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={handleConfirmDelete}
-                    disabled={isProjectDeletePending}
-                  >
-                    {isProjectDeletePending ? "Deleting..." : "Delete"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </div>
         ))}
+
+        <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Project</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete &quot;
+                {projectToDelete?.name}&quot;? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={handleCancelDelete}
+                disabled={isProjectDeletePending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmDelete}
+                disabled={isProjectDeletePending}
+              >
+                {isProjectDeletePending ? "Deleting..." : "Delete"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
