@@ -2,11 +2,14 @@ import { auth } from "@clerk/nextjs/server";
 import { RateLimiterPrisma } from "rate-limiter-flexible";
 
 import { prisma } from "@/lib/db";
+import { z } from "zod";
 
+const userIdSchema = z.string().min(1, "User ID is required");
+
+export const GENERATION_COST = 1;
 const FREE_POINTS = 2;
 const PRO_POINTS = 100;
 const DURATION = 30 * 24 * 60 * 60; // 30 days
-const GENERATION_COST = 1;
 
 export async function getUsageTracker() {
   const { has } = await auth();
@@ -22,15 +25,11 @@ export async function getUsageTracker() {
   return usageTracker;
 }
 
-export async function consumeCredits() {
-  const { userId } = await auth();
-
-  if (!userId) {
-    throw new Error("User not authenticated");
-  }
+export async function consumeCredits(userId: string) {
+  const validatedUserId = userIdSchema.parse(userId);
 
   const usageTracker = await getUsageTracker();
-  const result = await usageTracker.consume(userId, GENERATION_COST);
+  const result = await usageTracker.consume(validatedUserId, GENERATION_COST);
   return result;
 }
 

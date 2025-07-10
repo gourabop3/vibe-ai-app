@@ -22,6 +22,7 @@ import {
   parseAgentOutput,
 } from "./utils";
 import { SANDBOX_TIMEOUT } from "./types";
+import { consumeCredits } from "@/lib/usage";
 
 interface AgentState {
   summary: string;
@@ -332,6 +333,14 @@ export const codeAgentFunction = inngest.createFunction(
           timestamp: timestamp,
         })
       );
+
+      try {
+        await consumeCredits(event.data.userId);
+      } catch (error) {
+        console.error(error);
+      }
+
+      return savedMsg;
     });
 
     return {

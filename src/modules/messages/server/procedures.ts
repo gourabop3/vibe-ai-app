@@ -4,7 +4,7 @@ import { getSubscriptionToken } from "@inngest/realtime";
 
 import { prisma } from "@/lib/db";
 import { inngest } from "@/inngest/client";
-import { consumeCredits } from "@/lib/usage";
+import { consumeCredits, GENERATION_COST, getUsageTracker } from "@/lib/usage";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
 import { fragmentChannel } from "@/inngest/functions";
 
@@ -66,20 +66,17 @@ export const messagesRouter = createTRPCRouter({
         });
       }
 
-      try {
-        await consumeCredits();
-      } catch (error) {
-        if (error instanceof Error) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Something went wrong",
-          });
-        } else {
-          throw new TRPCError({
-            code: "TOO_MANY_REQUESTS",
-            message: "You have run out of credits",
-          });
-        }
+      const usageTracker = await getUsageTracker();
+      const userUsage = await usageTracker.get(ctx.auth.userId);
+
+      if (
+        userUsage?.remainingPoints &&
+        userUsage.remainingPoints < GENERATION_COST
+      ) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "You don't have enough credits",
+        });
       }
 
       const createdMessage = await prisma.message.create({
