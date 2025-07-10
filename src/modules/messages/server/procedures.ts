@@ -4,7 +4,7 @@ import { getSubscriptionToken } from "@inngest/realtime";
 
 import { prisma } from "@/lib/db";
 import { inngest } from "@/inngest/client";
-import { consumeCredits, GENERATION_COST, getUsageTracker } from "@/lib/usage";
+import { GENERATION_COST, getUsageTracker } from "@/lib/usage";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
 import { fragmentChannel } from "@/inngest/functions";
 
