@@ -11,7 +11,7 @@ export const projectsRouter = createTRPCRouter({
   getOne: protectedProcedure
     .input(
       z.object({
-        id: z.string().uuid().min(1, { message: "ID is required" }),
+        id: z.string().uuid(),
       })
     )
     .query(async ({ input, ctx }) => {
@@ -96,5 +96,34 @@ export const projectsRouter = createTRPCRouter({
       });
 
       return createdProject;
+    }),
+  deleteOne: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const projectToDelete = await prisma.project.findUnique({
+        where: {
+          id: input.id,
+          userId: ctx.auth.userId,
+        },
+      });
+
+      if (!projectToDelete) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found",
+        });
+      }
+
+      const deletedProject = await prisma.project.delete({
+        where: {
+          id: projectToDelete.id,
+        },
+      });
+
+      return deletedProject;
     }),
 });
