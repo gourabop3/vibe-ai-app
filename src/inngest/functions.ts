@@ -23,6 +23,7 @@ import {
 } from "./utils";
 import { SANDBOX_TIMEOUT } from "./types";
 import { consumeCredits } from "@/lib/usage";
+import { Prisma } from "@/generated/prisma";
 
 interface AgentState {
   summary: string;
@@ -279,7 +280,11 @@ export const codeAgentFunction = inngest.createFunction(
 
     const timestamp = new Date();
 
-    await step.run("save-result", async () => {
+    let savedMsg: Prisma.MessageGetPayload<{
+      include: { fragment: true };
+    }> | null = null;
+
+    await step.run("save-result-pre-consume", async () => {
       if (isError) {
         const errorMsg = await prisma.message.create({
           data: {
@@ -302,7 +307,7 @@ export const codeAgentFunction = inngest.createFunction(
         return errorMsg;
       }
 
-      const savedMsg = await prisma.message.create({
+      savedMsg = await prisma.message.create({
         data: {
           projectId: event.data.projectId,
           content: parseAgentOutput(responseOutput),
@@ -321,27 +326,61 @@ export const codeAgentFunction = inngest.createFunction(
         },
       });
 
-      await publish(
-        fragmentChannel(event.data.userId).fragment({
-          projectId: event.data.projectId,
-          status: "completed",
-          message: "Fragment generated successfully!",
-          fragmentId: savedMsg.fragment?.id,
-          messageId: savedMsg.id,
-          sandboxUrl: savedMsg.fragment?.sandboxUrl,
-          title: savedMsg.fragment?.title,
-          timestamp: timestamp,
-        })
-      );
-
-      try {
-        await consumeCredits(event.data.userId);
-      } catch (error) {
-        console.error(error);
-      }
-
-      return savedMsg;
+      return { message: "Result saved, pending credit consumption" };
     });
+
+    if (!isError) {
+      await step.run("consume-credits", async () => {
+        try {
+          await consumeCredits(event.data.userId, event.data.effectivePoints);
+
+          if (savedMsg) {
+            await publish(
+              fragmentChannel(event.data.userId).fragment({
+                projectId: event.data.projectId,
+                status: "completed",
+                message: "Fragment generated successfully!",
+                fragmentId: savedMsg.fragment?.id,
+                messageId: savedMsg.id,
+                sandboxUrl: savedMsg.fragment?.sandboxUrl,
+                title: savedMsg.fragment?.title,
+                timestamp,
+              })
+            );
+          } else {
+            console.error(
+              "Inngest: savedMsg was null after successful agent run and credit consumption attempt"
+            );
+          }
+        } catch (error: unknown) {
+          const errorMessageForUser =
+            error && typeof error === "object" && "message" in error
+              ? error.message
+              : "An unexpected error occurred while processing your credits.";
+
+          console.error(
+            `Inngest: Failed to consume credits for user ${event.data.userId}:`,
+            error
+          );
+
+          await publish(
+            fragmentChannel(event.data.userId).error({
+              projectId: event.data.projectId,
+              status: "error",
+              message: `Generation completed, but there was an issue consuming credits. Reason: ${errorMessageForUser}. No credits were consumed.`,
+              timestamp: new Date(),
+            })
+          );
+
+          return { message: errorMessageForUser };
+        }
+      });
+    } else {
+      console.log(
+        `Inngest: Agent execution failed (isError was true), no credits consumed for ${event.data.userId}.`
+      );
+      return { message: "No credits consumed due to agent error" };
+    }
 
     return {
       url: sandboxUrl,

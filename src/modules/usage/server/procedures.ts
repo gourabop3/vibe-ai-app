@@ -1,10 +1,14 @@
-import { getUsageStatus } from "@/lib/usage";
+import { getUsageTracker } from "@/lib/usage";
 import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
+import { auth } from "@clerk/nextjs/server";
 
 export const usageRouter = createTRPCRouter({
-  status: protectedProcedure.query(async () => {
+  status: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.auth.userId;
+    const { has } = await auth();
+
     try {
-      const result = await getUsageStatus();
+      const result = await getUsageTracker(userId, has);
 
       return result;
     } catch (error) {

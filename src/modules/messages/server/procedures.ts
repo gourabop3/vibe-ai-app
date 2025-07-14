@@ -1,12 +1,18 @@
 import { z } from "zod";
+import { auth } from "@clerk/nextjs/server";
 import { TRPCError } from "@trpc/server";
 import { getSubscriptionToken } from "@inngest/realtime";
 
 import { prisma } from "@/lib/db";
 import { inngest } from "@/inngest/client";
-import { GENERATION_COST, getUsageTracker } from "@/lib/usage";
-import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
 import { fragmentChannel } from "@/inngest/functions";
+import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
+import {
+  FREE_POINTS,
+  GENERATION_COST,
+  getUsageTracker,
+  PRO_POINTS,
+} from "@/lib/usage";
 
 export const messagesRouter = createTRPCRouter({
   getMany: protectedProcedure
@@ -52,10 +58,13 @@ export const messagesRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      const userId = ctx.auth.userId;
+      const { has } = await auth();
+
       const existingProject = await prisma.project.findUnique({
         where: {
           id: input.projectId,
-          userId: ctx.auth.userId,
+          userId: userId,
         },
       });
 
@@ -66,12 +75,11 @@ export const messagesRouter = createTRPCRouter({
         });
       }
 
-      const usageTracker = await getUsageTracker();
-      const userUsage = await usageTracker.get(ctx.auth.userId);
+      const userTracker = await getUsageTracker(userId, has);
 
       if (
-        userUsage?.remainingPoints &&
-        userUsage.remainingPoints < GENERATION_COST
+        userTracker !== null &&
+        userTracker.remainingPoints < GENERATION_COST
       ) {
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
@@ -88,12 +96,16 @@ export const messagesRouter = createTRPCRouter({
         },
       });
 
+      const hasProAccess = has({ plan: "pro" });
+      const effectivePoints = hasProAccess ? PRO_POINTS : FREE_POINTS;
+
       await inngest.send({
         name: "code-agent/run",
         data: {
           value: input.value,
           projectId: input.projectId,
-          userId: ctx.auth.userId,
+          userId,
+          effectivePoints,
         },
       });
 
