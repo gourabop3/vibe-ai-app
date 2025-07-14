@@ -349,7 +349,7 @@ export const codeAgentFunction = inngest.createFunction(
             );
           } else {
             console.error(
-              "Inngest: savedMsg was null after successfull agent run and credit consumption attempt"
+              "Inngest: savedMsg was null after successful agent run and credit consumption attempt"
             );
           }
         } catch (error: unknown) {

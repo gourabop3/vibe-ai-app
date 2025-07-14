@@ -8,15 +8,8 @@ export const usageRouter = createTRPCRouter({
     const userId = ctx.auth.userId;
     const { has } = await auth();
 
-    if (!userId || !has) {
-      throw new TRPCError({
-        code: "UNAUTHORIZED",
-        message: "Authentication context missing",
-      });
-    }
-
     try {
-      const result = await getUsageTracker(ctx.auth.userId, has);
+      const result = await getUsageTracker(userId, has);
 
       return result;
     } catch (error) {
