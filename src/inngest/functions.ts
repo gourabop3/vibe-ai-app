@@ -352,7 +352,7 @@ export const codeAgentFunction = inngest.createFunction(
               "Inngest: savedMsg was null after successfull agent run and credit consumption attempt"
             );
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           const errorMessageForUser =
             error && typeof error === "object" && "message" in error
               ? error.message
