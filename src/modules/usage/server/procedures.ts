@@ -1,7 +1,6 @@
 import { getUsageTracker } from "@/lib/usage";
 import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
 import { auth } from "@clerk/nextjs/server";
-import { TRPCError } from "@trpc/server";
 
 export const usageRouter = createTRPCRouter({
   status: protectedProcedure.query(async ({ ctx }) => {
