@@ -71,7 +71,7 @@ const MessagesContainer = ({
 
   const invalidateMessages = useCallback(
     () =>
-      queryClient.invalidateQueries(
+      void queryClient.invalidateQueries(
         trpc.messages.getMany.queryOptions({ projectId })
       ),
     [queryClient, trpc.messages.getMany, projectId]

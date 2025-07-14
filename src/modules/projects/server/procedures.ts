@@ -5,6 +5,13 @@ import { prisma } from "@/lib/db";
 import { inngest } from "@/inngest/client";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
+import {
+  FREE_POINTS,
+  GENERATION_COST,
+  getUsageTracker,
+  PRO_POINTS,
+} from "@/lib/usage";
+import { auth } from "@clerk/nextjs/server";
 
 export const projectsRouter = createTRPCRouter({
   getOne: protectedProcedure
@@ -54,6 +61,28 @@ export const projectsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      const userId = ctx.auth.userId;
+      const { has } = await auth();
+
+      if (!userId || !has) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Authentication context missing",
+        });
+      }
+
+      const userTracker = await getUsageTracker(userId, has);
+
+      if (
+        userTracker !== null &&
+        userTracker.remainingPoints < GENERATION_COST
+      ) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "You don't have enough credits",
+        });
+      }
+
       const createdProject = await prisma.project.create({
         data: {
           userId: ctx.auth.userId,
@@ -70,11 +99,16 @@ export const projectsRouter = createTRPCRouter({
         },
       });
 
+      const hasProAccess = has({ plan: "pro" });
+      const effectivePoints = hasProAccess ? PRO_POINTS : FREE_POINTS;
+
       await inngest.send({
         name: "code-agent/run",
         data: {
           value: input.prompt,
           projectId: createdProject.id,
+          userId: ctx.auth.userId,
+          effectivePoints,
         },
       });
 
