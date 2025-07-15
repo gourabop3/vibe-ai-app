@@ -122,7 +122,7 @@ export const messagesRouter = createTRPCRouter({
 
       const token = await getSubscriptionToken(inngest, {
         channel: fragmentChannel(userId),
-        topics: ["fragment", "error"],
+        topics: ["completed", "error"],
       });
 
       return token;

@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { ProjectForm } from "@/modules/home/ui/components/project-form";
 import { ProjectsList } from "@/modules/home/ui/components/projects-list";
+import { GenerationStatusProvider } from "@/contexts/generation-status-context";
 
 const Page = () => {
   return (
@@ -23,7 +24,9 @@ const Page = () => {
           Create apps and websites by chatting with AI
         </p>
         <div className="max-w-3xl mx-auto w-full">
-          <ProjectForm />
+          <GenerationStatusProvider>
+            <ProjectForm />
+          </GenerationStatusProvider>
         </div>
       </section>
       <ProjectsList />

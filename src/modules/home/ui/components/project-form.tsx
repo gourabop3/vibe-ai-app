@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUpIcon, Loader2Icon } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/trpc/client";
@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 
 import { PROJECT_TEMPLATES } from "../../constants";
+import { GENERATION_COST } from "@/lib/usage";
+import { useGenerationStatus } from "@/contexts/generation-status-context";
 
 const formSchema = z.object({
   value: z.string().min(1, { message: "Message is required" }).max(10000, {
@@ -29,6 +31,11 @@ export const ProjectForm = () => {
   const trpc = useTRPC();
   const clerk = useClerk();
   const queryClient = useQueryClient();
+
+  const { setIsGenerating } = useGenerationStatus();
+
+  const { data: usage } = useQuery(trpc.usage.status.queryOptions());
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -38,12 +45,51 @@ export const ProjectForm = () => {
 
   const createProject = useMutation(
     trpc.projects.create.mutationOptions({
+      onMutate: async () => {
+        setIsGenerating(true);
+
+        const usageQueryOptions = trpc.usage.status.queryOptions();
+        const usageQueryKey = trpc.usage.status.queryKey();
+
+        void (await queryClient.cancelQueries(usageQueryOptions));
+
+        const previousUsage = usage;
+
+        if (previousUsage) {
+          queryClient.setQueryData(usageQueryKey, (oldData) => {
+            if (!oldData) return oldData;
+
+            const updated = {
+              ...oldData,
+              remainingPoints: Math.max(
+                0,
+                oldData.remainingPoints - GENERATION_COST
+              ),
+              consumedPoints: oldData.consumedPoints + GENERATION_COST,
+            };
+
+            return updated as typeof oldData;
+          });
+        }
+
+        return { previousUsage };
+      },
       onSuccess: (data) => {
         queryClient.invalidateQueries(trpc.projects.getMany.queryOptions());
-        queryClient.invalidateQueries(trpc.usage.status.queryOptions());
         router.push(`/projects/${data?.id}`);
       },
-      onError: (error) => {
+      onError: (
+        error,
+        _variables,
+        context?: { previousUsage?: typeof usage }
+      ) => {
+        if (context?.previousUsage) {
+          void queryClient.setQueryData(
+            trpc.usage.status.queryKey(),
+            context.previousUsage
+          );
+        }
+
         toast.error(error.message);
 
         if (error.data?.code === "UNAUTHORIZED") {

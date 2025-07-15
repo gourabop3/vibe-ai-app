@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import { ErrorBoundary } from "react-error-boundary";
 import { Suspense, useState } from "react";
 import { EyeIcon, CodeIcon, CrownIcon } from "lucide-react";
 
@@ -19,7 +20,6 @@ import {
 import { FragmentWeb } from "../components/fragment-web";
 import { ProjectHeader } from "../components/project-header";
 import MessagesContainer from "../components/messages-container";
-import { ErrorBoundary } from "react-error-boundary";
 
 interface Props {
   projectId: string;

@@ -1,8 +1,10 @@
+import { toast } from "sonner";
 import { useCallback, useEffect, useRef } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 
 import { useTRPC } from "@/trpc/client";
 import { Fragment } from "@/generated/prisma";
+import { useGenerationStatus } from "@/contexts/generation-status-context";
 import { useCustomInngestSubscription } from "@/hooks/use-custom-inngest-subscription";
 
 import { MessageCard } from "./message-card";
@@ -25,6 +27,7 @@ const MessagesContainer = ({
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const { setIsGenerating } = useGenerationStatus();
 
   const { data: messages } = useSuspenseQuery(
     trpc.messages.getMany.queryOptions({
@@ -66,8 +69,10 @@ const MessagesContainer = ({
   useEffect(() => {
     if (error) {
       console.error("Subscription error:", error);
+      toast.error("Realtime updates disconnected. Please refresh.");
+      setIsGenerating(false);
     }
-  }, [error]);
+  }, [error, setIsGenerating]);
 
   const invalidateMessages = useCallback(
     () =>
@@ -77,17 +82,29 @@ const MessagesContainer = ({
     [queryClient, trpc.messages.getMany, projectId]
   );
 
+  const invalidateUsage = useCallback(
+    () => void queryClient.invalidateQueries(trpc.usage.status.queryOptions()),
+    [queryClient, trpc.usage.status]
+  );
+
   useEffect(() => {
     if (!latestData) return;
 
-    if (latestData.topic === "fragment") {
+    if (latestData.topic === "completed") {
       invalidateMessages();
+      invalidateUsage();
+      setIsGenerating(false);
+      alert("COMPLETED");
     }
 
     if (latestData.topic === "error") {
       console.log("Agent error:", latestData.data.message);
+      invalidateMessages();
+      invalidateUsage();
+      setIsGenerating(false);
+      alert("ERROR");
     }
-  }, [latestData, invalidateMessages]);
+  }, [latestData, invalidateMessages, invalidateUsage, setIsGenerating]);
 
   useEffect(() => {
     const lastAssistantMessage = messages.findLast(
@@ -108,7 +125,7 @@ const MessagesContainer = ({
   }, [messages.length]);
 
   const lastMessage = messages[messages.length - 1];
-  const isLastMessageUser = lastMessage.role === "USER";
+  const isLastMessageUser = lastMessage && lastMessage.role === "USER";
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
