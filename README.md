@@ -36,7 +36,7 @@ The Vibe AI App is an innovative web application that leverages advanced AI mode
   - [OpenAI API](https://openai.com/docs/api/) (GPT-4.1, GPT-4o) for AI model inference.
   - [Prisma](https://www.prisma.io/) as the ORM for database interactions.
   - [tRPC](https://trpc.io/) for building strongly typed end-to-end APIs.
-- **Database:** PostgreSQL (or any other relational database supported by Prisma).
+- **Database:** [Neon](https://neon.tech/) (PostgreSQL compatible serverless database).
 
 ---
 
