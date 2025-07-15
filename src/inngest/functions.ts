@@ -67,7 +67,7 @@ export const codeAgentFunction = inngest.createFunction(
     let finalMessageId: string | undefined = undefined;
     let finalSandboxUrl: string | undefined = undefined;
     let finalTitle: string | undefined = undefined;
-    let finalTimestamp = new Date();
+    const finalTimestamp = new Date();
 
     let isAgentCoreLogicSuccessful = false;
     let creditsConsumedSuccessfully = false;
@@ -341,6 +341,7 @@ export const codeAgentFunction = inngest.createFunction(
               event.data.effectivePoints
             ));
             creditsConsumedSuccessfully = true;
+            finalSandboxUrl = sandboxUrl;
           } catch (creditError: unknown) {
             finalMessage =
               creditError &&

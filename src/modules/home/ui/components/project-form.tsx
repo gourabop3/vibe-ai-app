@@ -53,7 +53,7 @@ export const ProjectForm = () => {
 
         void (await queryClient.cancelQueries(usageQueryOptions));
 
-        const previousUsage = queryClient.getQueryData(usageQueryKey);
+        const previousUsage = usage;
 
         if (previousUsage) {
           queryClient.setQueryData(usageQueryKey, (oldData) => {
@@ -67,16 +67,6 @@ export const ProjectForm = () => {
               ),
               consumedPoints: oldData.consumedPoints + GENERATION_COST,
             };
-
-            (updated as any).toJSON =
-              (oldData as any).toJSON ||
-              function (this: typeof oldData) {
-                if (!this) {
-                  console.warn("toJSON called with undefined 'this' context");
-                  return {};
-                }
-                return { ...this };
-              };
 
             return updated as typeof oldData;
           });
