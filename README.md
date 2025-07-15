@@ -125,7 +125,7 @@ You need to have both of these servers running, otherwise you'll get an error.
 
 2. **Enter Prompt:** Navigate to the home page and type your desired code generation prompt in the input field. You can also select from pre-defined templates.
 
-3. **Generate:** Click the submit (⬆) button.
+3. **Generate:** Click the submit (⬆) button or press `CTRL+Enter` (`CMD+Enter` in Mac).
 
 4. **Monitor Progress:** The application will provide real-time updates as the AI processes your request, interacts with the code interpreter, saves results, and consumes credits.
 
