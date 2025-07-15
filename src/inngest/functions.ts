@@ -281,14 +281,11 @@ export const codeAgentFunction = inngest.createFunction(
         }),
       });
 
-      const { output: fragmentTitleOutput } = await step.run(
-        "generate-fragment-title",
-        () => fragmentTitleGenerator.run(agentRunResult!.state.data.summary)
-      );
-      const { output: responseOutput } = await step.run(
-        "generate-response-output",
-        () => responseGenerator.run(agentRunResult!.state.data.summary)
-      );
+      const [{ output: fragmentTitleOutput }, { output: responseOutput }] =
+        await Promise.all([
+          await fragmentTitleGenerator.run(agentRunResult!.state.data.summary),
+          await responseGenerator.run(agentRunResult!.state.data.summary),
+        ]);
 
       const isAgentExecutionError =
         !agentRunResult.state.data.summary ||
