@@ -73,9 +73,7 @@ You can see the Vibe AI App running live before installing it locally. The produ
 2.  **Install dependencies:**
 
     ```bash
-    yarn install
-    # or
-    npm install
+    pnpm install
     ```
 
 3.  **Set up Environment Variables:**
@@ -110,20 +108,24 @@ You can see the Vibe AI App running live before installing it locally. The produ
 ### Running the Development Server
 
 ```bash
-yarn dev
-# or
-npm run dev
+pnpm dev
 ```
 
-This will create an optimized production build in the `.next` folder.
+### Running Inngest Development Server
+
+```bash
+pnpm dlx inngest-cli@latest dev
+```
+
+You need to have both of these servers running, otherwise you'll get an error.
 
 ## 💡 Usage
 
 1. **Sign Up/Log in:** Access the application and authenticate using Clerk.
 
-2. **Enter Prompt:** Navigate to the project creation area (e.g., `/projects/new` or the home page) and type your desired code generation prompt in the input field. You can also select from pre-defined templates.
+2. **Enter Prompt:** Navigate to the home page and type your desired code generation prompt in the input field. You can also select from pre-defined templates.
 
-3. **Generate:** Click the "Generate" button.
+3. **Generate:** Click the submit (⬆) button.
 
 4. **Monitor Progress:** The application will provide real-time updates as the AI processes your request, interacts with the code interpreter, saves results, and consumes credits.
 
