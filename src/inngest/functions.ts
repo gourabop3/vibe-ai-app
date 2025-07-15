@@ -309,7 +309,6 @@ export const codeAgentFunction = inngest.createFunction(
           }));
           return null;
         } else {
-          isAgentCoreLogicSuccessful = true;
           const msg = await prisma.message.create({
             data: {
               projectId: event.data.projectId,
@@ -331,6 +330,9 @@ export const codeAgentFunction = inngest.createFunction(
           return msg;
         }
       });
+
+      isAgentCoreLogicSuccessful = savedDbMsg !== null;
+
       if (isAgentCoreLogicSuccessful) {
         await step.run("consume-credits", async () => {
           try {

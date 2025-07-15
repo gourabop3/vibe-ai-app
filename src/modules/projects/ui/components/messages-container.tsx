@@ -79,12 +79,12 @@ const MessagesContainer = ({
       void queryClient.invalidateQueries(
         trpc.messages.getMany.queryOptions({ projectId })
       ),
-    [queryClient, trpc.messages.getMany, projectId]
+    [queryClient, projectId]
   );
 
   const invalidateUsage = useCallback(
     () => void queryClient.invalidateQueries(trpc.usage.status.queryOptions()),
-    [queryClient, trpc.usage.status]
+    [queryClient]
   );
 
   useEffect(() => {
