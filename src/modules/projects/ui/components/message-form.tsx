@@ -117,13 +117,6 @@ export const MessageForm = ({ projectId }: Props) => {
   const isFormDisabled = isPending || isGenerating;
   const isButtonDisabled = isFormDisabled || !form.formState.isValid;
 
-  useEffect(() => {
-    console.log("\n\n\n");
-    console.log(`isPending: ${isPending}`);
-    console.log(`isGenerating: ${isGenerating}`);
-    console.log("\n\n\n");
-  }, [isPending, isGenerating]);
-
   return (
     <Form {...form}>
       {showUsage && (
