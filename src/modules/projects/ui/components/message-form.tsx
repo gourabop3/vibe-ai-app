@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,6 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 
 import Usage from "./usage";
+import { GENERATION_COST } from "@/lib/usage";
+
+import { useGenerationStatus } from "@/contexts/generation-status-context";
 
 interface Props {
   projectId: string;
@@ -29,6 +32,7 @@ export const MessageForm = ({ projectId }: Props) => {
   const trpc = useTRPC();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isGenerating, setIsGenerating } = useGenerationStatus();
 
   const { data: usage } = useQuery(trpc.usage.status.queryOptions());
 
@@ -41,21 +45,71 @@ export const MessageForm = ({ projectId }: Props) => {
 
   const createMessage = useMutation(
     trpc.messages.create.mutationOptions({
+      onMutate: async () => {
+        setIsGenerating(true);
+
+        const usageQueryOptions = trpc.usage.status.queryOptions();
+        const usageQueryKey = trpc.usage.status.queryKey();
+
+        await queryClient.cancelQueries(usageQueryOptions);
+
+        const previousUsage = queryClient.getQueryData(usageQueryKey);
+
+        if (previousUsage) {
+          queryClient.setQueryData(usageQueryKey, (oldData) => {
+            if (!oldData) return oldData;
+
+            const updated = {
+              ...oldData,
+              remainingPoints: Math.max(
+                0,
+                oldData.remainingPoints - GENERATION_COST
+              ),
+              consumedPoints: oldData.consumedPoints + GENERATION_COST,
+            };
+
+            (updated as any).toJSON =
+              (oldData as any).toJSON ||
+              function (this: typeof oldData) {
+                if (!this) {
+                  console.warn("toJSON called with undefined 'this' context");
+                  return {};
+                }
+                return { ...this };
+              };
+
+            return updated as typeof oldData;
+          });
+        }
+
+        return { previousUsage };
+      },
       onSuccess: () => {
         form.reset();
-        queryClient.invalidateQueries(
+        void queryClient.invalidateQueries(
           trpc.messages.getMany.queryOptions({
             projectId,
           })
         );
-        queryClient.invalidateQueries(trpc.usage.status.queryOptions());
       },
-      onError: (error) => {
+      onError: (
+        error,
+        _variables,
+        context?: { previousUsage?: typeof usage }
+      ) => {
+        if (context?.previousUsage) {
+          const usageQueryOptions = trpc.usage.status.queryOptions();
+          const queryKey = usageQueryOptions.queryKey;
+          void queryClient.setQueryData(queryKey, context.previousUsage);
+        }
+
         toast.error(error.message);
 
         if (error.data?.code === "TOO_MANY_REQUESTS") {
           router.push("/pricing");
         }
+
+        setIsGenerating(false);
       },
     })
   );
@@ -70,7 +124,15 @@ export const MessageForm = ({ projectId }: Props) => {
   const [isFocused, setIsFocused] = useState(false);
   const showUsage = !!usage;
   const isPending = createMessage.isPending;
-  const isButtonDisabled = isPending || !form.formState.isValid;
+  const isFormDisabled = isPending || isGenerating;
+  const isButtonDisabled = isFormDisabled || !form.formState.isValid;
+
+  useEffect(() => {
+    console.log("\n\n\n");
+    console.log(`isPending: ${isPending}`);
+    console.log(`isGenerating: ${isGenerating}`);
+    console.log("\n\n\n");
+  }, [isPending, isGenerating]);
 
   return (
     <Form {...form}>
@@ -94,17 +156,22 @@ export const MessageForm = ({ projectId }: Props) => {
           render={({ field }) => (
             <TextareaAutosize
               {...field}
-              disabled={isPending}
+              disabled={isFormDisabled}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               minRows={2}
               maxRows={8}
-              className="pt-4 resize-none border-none w-full outline-none bg-transparent"
+              className={cn(
+                "pt-4 resize-none border-none w-full outline-none bg-transparent",
+                isFormDisabled && "cursor-not-allowed"
+              )}
               placeholder="What would you like to build?"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
-                  form.handleSubmit(onSubmit)(e);
+                  if (!isFormDisabled) {
+                    form.handleSubmit(onSubmit)(e);
+                  }
                 }
               }}
             />
@@ -124,7 +191,7 @@ export const MessageForm = ({ projectId }: Props) => {
             )}
             disabled={isButtonDisabled}
           >
-            {isPending ? (
+            {isFormDisabled ? (
               <Loader2Icon className="size-4 animate-spin" />
             ) : (
               <ArrowUpIcon />

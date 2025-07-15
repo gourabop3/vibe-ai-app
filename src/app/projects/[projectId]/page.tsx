@@ -6,6 +6,7 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { getQueryClient, trpc } from "@/trpc/server";
 
 import { ProjectView } from "@/modules/projects/ui/views/project-view";
+import { GenerationStatusWrapper } from "@/modules/projects/ui/components/generation-status-wrapper";
 
 interface Props {
   params: Promise<{
@@ -49,7 +50,9 @@ const ProjectPage = async ({ params }: Props) => {
     <HydrationBoundary state={dehydrate(queryClient)}>
       <ErrorBoundary fallback={<p>Error</p>}>
         <Suspense fallback={<p>Loading...</p>}>
-          <ProjectView projectId={projectId} />
+          <GenerationStatusWrapper>
+            <ProjectView projectId={projectId} />
+          </GenerationStatusWrapper>
         </Suspense>
       </ErrorBoundary>
     </HydrationBoundary>

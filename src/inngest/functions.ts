@@ -9,6 +9,7 @@ import {
   createNetwork,
   type Tool,
   type Message,
+  type NetworkRun,
   createState,
 } from "@inngest/agent-kit";
 
@@ -23,7 +24,6 @@ import {
 } from "./utils";
 import { SANDBOX_TIMEOUT } from "./types";
 import { consumeCredits } from "@/lib/usage";
-import { Prisma } from "@/generated/prisma";
 
 interface AgentState {
   summary: string;
@@ -32,7 +32,7 @@ interface AgentState {
 
 export const fragmentChannel = channel((userId: string) => `user:${userId}`)
   .addTopic(
-    topic("fragment").schema(
+    topic("completed").schema(
       z.object({
         projectId: z.string(),
         status: z.literal("completed"),
@@ -60,333 +60,366 @@ export const codeAgentFunction = inngest.createFunction(
   { id: "code-agent" },
   { event: "code-agent/run" },
   async ({ event, step, publish }) => {
-    const sandboxId = await step.run("get-sandbox-id", async () => {
-      const sandbox = await Sandbox.create("vibe-ai-app-nextjs-v3");
-      await sandbox.setTimeout(SANDBOX_TIMEOUT);
-      return sandbox.sandboxId;
-    });
+    let finalStatus: "completed" | "error" = "error";
+    let finalMessage: string =
+      "An unexpected error occurred during the generation process.";
+    let finalFragmentId: string | undefined = undefined;
+    let finalMessageId: string | undefined = undefined;
+    let finalSandboxUrl: string | undefined = undefined;
+    let finalTitle: string | undefined = undefined;
+    let finalTimestamp = new Date();
 
-    const previousMessages = await step.run(
-      "get-previous-messages",
-      async () => {
-        const formattedMessages: Message[] = [];
+    let isAgentCoreLogicSuccessful = false;
+    let creditsConsumedSuccessfully = false;
+    let agentErrorMessage: string | undefined;
 
-        const messages = await prisma.message.findMany({
-          where: {
-            projectId: event.data.projectId,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 5,
-        });
+    let agentRunResult: NetworkRun<AgentState> | null = null;
 
-        for (const message of messages) {
-          formattedMessages.push({
-            type: "text",
-            role: message.role === "ASSISTANT" ? "assistant" : "user",
-            content: message.content,
+    try {
+      const sandboxId = await step.run("get-sandbox-id", async () => {
+        const sandbox = await Sandbox.create("vibe-ai-app-nextjs-v3");
+        await sandbox.setTimeout(SANDBOX_TIMEOUT);
+        return sandbox.sandboxId;
+      });
+
+      const previousMessages = await step.run(
+        "get-previous-messages",
+        async () => {
+          const formattedMessages: Message[] = [];
+
+          const messages = await prisma.message.findMany({
+            where: {
+              projectId: event.data.projectId,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 5,
           });
-        }
 
-        return formattedMessages.reverse();
-      }
-    );
-
-    const state = createState<AgentState>(
-      {
-        summary: "",
-        files: {},
-      },
-      {
-        messages: previousMessages,
-      }
-    );
-
-    const codeAgent = createAgent<AgentState>({
-      name: "code-agent",
-      description: "An expert coding agent",
-      system: PROMPT,
-      model: openai({
-        model: "gpt-4.1",
-        defaultParameters: {
-          temperature: 0.1,
-        },
-      }),
-      tools: [
-        createTool({
-          name: "terminal",
-          description: "Use the terminal to run commands",
-          parameters: z.object({
-            command: z.string(),
-          }),
-          handler: async ({ command }, { step }) => {
-            return await step?.run("terminal", async () => {
-              const buffers = { stdout: "", stderr: "" };
-
-              try {
-                const sandbox = await getSandbox(sandboxId);
-                const result = await sandbox.commands.run(command, {
-                  onStdout: (data: string) => {
-                    buffers.stdout += data;
-                  },
-                  onStderr: (data: string) => {
-                    buffers.stderr += data;
-                  },
-                });
-
-                return result.stdout;
-              } catch (error) {
-                console.error(
-                  `Command failed: ${error} \nstdout: ${buffers.stdout}\nsterr: ${buffers.stderr}`
-                );
-                return `Command failed: ${error} \nstdout: ${buffers.stdout}\nsterr: ${buffers.stderr}`;
-              }
+          for (const message of messages) {
+            formattedMessages.push({
+              type: "text",
+              role: message.role === "ASSISTANT" ? "assistant" : "user",
+              content: message.content,
             });
+          }
+
+          return formattedMessages.reverse();
+        }
+      );
+
+      const state = createState<AgentState>(
+        {
+          summary: "",
+          files: {},
+        },
+        {
+          messages: previousMessages,
+        }
+      );
+
+      const codeAgent = createAgent<AgentState>({
+        name: "code-agent",
+        description: "An expert coding agent",
+        system: PROMPT,
+        model: openai({
+          model: "gpt-4.1",
+          defaultParameters: {
+            temperature: 0.1,
           },
         }),
-        createTool({
-          name: "createOrUpdateFiles",
-          description: "Create or update files in the sandbox",
-          parameters: z.object({
-            files: z.array(
-              z.object({
-                path: z.string(),
-                content: z.string(),
-              })
-            ),
-          }),
-          handler: async (
-            { files },
-            { step, network }: Tool.Options<AgentState>
-          ) => {
-            const newFiles = await step?.run(
-              "createOrUpdateFiles",
-              async () => {
+        tools: [
+          createTool({
+            name: "terminal",
+            description: "Use the terminal to run commands",
+            parameters: z.object({
+              command: z.string(),
+            }),
+            handler: async ({ command }, { step }) => {
+              return await step?.run("terminal", async () => {
+                const buffers = { stdout: "", stderr: "" };
+
                 try {
-                  const updatedFiles = network.state.data.files || {};
                   const sandbox = await getSandbox(sandboxId);
-                  for (const file of files) {
-                    await sandbox.files.write(file.path, file.content);
-                    updatedFiles[file.path] = file.content;
+                  void (await sandbox.commands.run(command, {
+                    onStdout: (data: string) => {
+                      buffers.stdout += data;
+                    },
+                    onStderr: (data: string) => {
+                      buffers.stderr += data;
+                    },
+                  }));
+
+                  if (buffers.stderr) {
+                    return buffers.stderr;
                   }
 
-                  return updatedFiles;
+                  return buffers.stdout;
+                } catch (error) {
+                  console.error(
+                    `Command failed: ${error} \nstdout: ${buffers.stdout}\nsterr: ${buffers.stderr}`
+                  );
+                  return `Command failed: ${error} \nstdout: ${buffers.stdout}\nsterr: ${buffers.stderr}`;
+                }
+              });
+            },
+          }),
+          createTool({
+            name: "createOrUpdateFiles",
+            description: "Create or update files in the sandbox",
+            parameters: z.object({
+              files: z.array(
+                z.object({
+                  path: z.string(),
+                  content: z.string(),
+                })
+              ),
+            }),
+            handler: async (
+              { files },
+              { step, network }: Tool.Options<AgentState>
+            ) => {
+              const newFiles = await step?.run(
+                "createOrUpdateFiles",
+                async () => {
+                  try {
+                    const updatedFiles = network.state.data.files || {};
+                    const sandbox = await getSandbox(sandboxId);
+                    for (const file of files) {
+                      void (await sandbox.files.write(file.path, file.content));
+                      updatedFiles[file.path] = file.content;
+                    }
+
+                    return updatedFiles;
+                  } catch (error) {
+                    return "Error: " + error;
+                  }
+                }
+              );
+
+              if (typeof newFiles === "object" && newFiles !== null) {
+                network.state.data.files = newFiles;
+              }
+            },
+          }),
+          createTool({
+            name: "readFiles",
+            description: "Read files from the sandbox",
+            parameters: z.object({
+              files: z.array(z.string()),
+            }),
+            handler: async ({ files }, { step }) => {
+              return await step?.run("readFiles", async () => {
+                try {
+                  const sandbox = await getSandbox(sandboxId);
+                  const contents = [];
+
+                  for (const file of files) {
+                    const content = await sandbox.files.read(file);
+                    contents.push({ path: file, content });
+                  }
+
+                  return JSON.stringify(contents);
                 } catch (error) {
                   return "Error: " + error;
                 }
-              }
-            );
-
-            if (typeof newFiles === "object") {
-              network.state.data.files = newFiles;
-            }
-          },
-        }),
-        createTool({
-          name: "readFiles",
-          description: "Read files from the sandbox",
-          parameters: z.object({
-            files: z.array(z.string()),
+              });
+            },
           }),
-          handler: async ({ files }, { step }) => {
-            return await step?.run("readFiles", async () => {
-              try {
-                const sandbox = await getSandbox(sandboxId);
-                const contents = [];
+        ],
 
-                for (const file of files) {
-                  const content = await sandbox.files.read(file);
-                  contents.push({ path: file, content });
-                }
+        lifecycle: {
+          onResponse: async ({ result, network }) => {
+            const lastAssistantTextMessage =
+              lastAssistantTextMessageContent(result);
 
-                return JSON.stringify(contents);
-              } catch (error) {
-                return "Error: " + error;
+            if (lastAssistantTextMessage && network) {
+              if (lastAssistantTextMessage.includes("<task_summary>")) {
+                network.state.data.summary = lastAssistantTextMessage;
               }
-            });
-          },
-        }),
-      ],
-
-      lifecycle: {
-        onResponse: async ({ result, network }) => {
-          const lastAssistantTextMessage =
-            lastAssistantTextMessageContent(result);
-
-          if (lastAssistantTextMessage && network) {
-            if (lastAssistantTextMessage.includes("<task_summary>")) {
-              network.state.data.summary = lastAssistantTextMessage;
             }
+
+            return result;
+          },
+        },
+      });
+
+      const network = createNetwork<AgentState>({
+        name: "coding-agent-network",
+        agents: [codeAgent],
+        maxIter: 15,
+        defaultState: state,
+        router: async ({ network }) => {
+          const summary = network.state.data.summary;
+
+          if (summary) {
+            return;
           }
 
-          return result;
+          return codeAgent;
         },
-      },
-    });
+      });
 
-    const network = createNetwork<AgentState>({
-      name: "coding-agent-network",
-      agents: [codeAgent],
-      maxIter: 15,
-      defaultState: state,
-      router: async ({ network }) => {
-        const summary = network.state.data.summary;
+      agentRunResult = await network.run(event.data.value, { state });
 
-        if (summary) {
-          return;
+      const fragmentTitleGenerator = createAgent<AgentState>({
+        name: "fragment-title-generator",
+        description: "A fragment title generator",
+        system: FRAGMENT_TITLE_PROMPT,
+        model: openai({
+          model: "gpt-4o",
+        }),
+      });
+
+      const responseGenerator = createAgent<AgentState>({
+        name: "response-generator",
+        description: "A response generator",
+        system: RESPONSE_PROMPT,
+        model: openai({
+          model: "gpt-4o",
+        }),
+      });
+
+      const { output: fragmentTitleOutput } = await step.run(
+        "generate-fragment-title",
+        () => fragmentTitleGenerator.run(agentRunResult!.state.data.summary)
+      );
+      const { output: responseOutput } = await step.run(
+        "generate-response-output",
+        () => responseGenerator.run(agentRunResult!.state.data.summary)
+      );
+
+      const isAgentExecutionError =
+        !agentRunResult.state.data.summary ||
+        Object.keys(agentRunResult.state.data.files || {}).length === 0;
+
+      const sandboxUrl = await step.run("get-sandbox-url", async () => {
+        const sandbox = await getSandbox(sandboxId);
+        const host = sandbox.getHost(3000);
+        return `https://${host}`;
+      });
+
+      const savedDbMsg = await step.run("save-result", async () => {
+        if (isAgentExecutionError) {
+          void (await prisma.message.create({
+            data: {
+              projectId: event.data.projectId,
+              content: "Something went wrong. Please try again.",
+              role: "ASSISTANT",
+              type: "ERROR",
+            },
+          }));
+          return null;
+        } else {
+          isAgentCoreLogicSuccessful = true;
+          const msg = await prisma.message.create({
+            data: {
+              projectId: event.data.projectId,
+              content: parseAgentOutput(responseOutput),
+              role: "ASSISTANT",
+              type: "RESULT",
+              fragment: {
+                create: {
+                  sandboxUrl: sandboxUrl,
+                  title: parseAgentOutput(fragmentTitleOutput),
+                  files: agentRunResult!.state.data.files,
+                },
+              },
+            },
+            include: {
+              fragment: true,
+            },
+          });
+          return msg;
         }
-
-        return codeAgent;
-      },
-    });
-
-    const result = await network.run(event.data.value, { state });
-
-    const fragmentTitleGenerator = createAgent<AgentState>({
-      name: "fragment-title-generator",
-      description: "A fragment title generator",
-      system: FRAGMENT_TITLE_PROMPT,
-      model: openai({
-        model: "gpt-4o",
-      }),
-    });
-
-    const responseGenerator = createAgent<AgentState>({
-      name: "response-generator",
-      description: "A response generator",
-      system: RESPONSE_PROMPT,
-      model: openai({
-        model: "gpt-4o",
-      }),
-    });
-
-    const { output: fragmentTitleOutput } = await fragmentTitleGenerator.run(
-      result.state.data.summary
-    );
-    const { output: responseOutput } = await responseGenerator.run(
-      result.state.data.summary
-    );
-
-    const isError =
-      !result.state.data.summary ||
-      Object.keys(result.state.data.files || {}).length === 0;
-
-    const sandboxUrl = await step.run("get-sandbox-url", async () => {
-      const sandbox = await getSandbox(sandboxId);
-      const host = sandbox.getHost(3000);
-      return `https://${host}`;
-    });
-
-    const timestamp = new Date();
-
-    let savedMsg: Prisma.MessageGetPayload<{
-      include: { fragment: true };
-    }> | null = null;
-
-    await step.run("save-result-pre-consume", async () => {
-      if (isError) {
-        const errorMsg = await prisma.message.create({
-          data: {
-            projectId: event.data.projectId,
-            content: "Something went wrong. Please try again.",
-            role: "ASSISTANT",
-            type: "ERROR",
-          },
+      });
+      if (isAgentCoreLogicSuccessful) {
+        await step.run("consume-credits", async () => {
+          try {
+            void (await consumeCredits(
+              event.data.userId,
+              event.data.effectivePoints
+            ));
+            creditsConsumedSuccessfully = true;
+          } catch (creditError: unknown) {
+            finalMessage =
+              creditError &&
+              typeof creditError === "object" &&
+              "message" in creditError
+                ? `Generation completed, but there was an issue consuming credits. Reason: ${creditError.message}. No credits were consumed.`
+                : "Generation completed, but an unexpected error occurred while consuming credits. No credits were consumed.";
+            console.error(
+              `Inngest: Failed to consume credits for user ${event.data.userId}:`,
+              creditError
+            );
+          }
         });
-
-        await publish(
-          fragmentChannel(event.data.userId).error({
-            projectId: event.data.projectId,
-            status: "error",
-            message: "Something went wrong. Please try again.",
-            timestamp: timestamp,
-          })
-        );
-
-        return errorMsg;
       }
 
-      savedMsg = await prisma.message.create({
-        data: {
-          projectId: event.data.projectId,
-          content: parseAgentOutput(responseOutput),
-          role: "ASSISTANT",
-          type: "RESULT",
-          fragment: {
-            create: {
-              sandboxUrl: sandboxUrl,
-              title: parseAgentOutput(fragmentTitleOutput),
-              files: result.state.data.files,
-            },
-          },
-        },
-        include: {
-          fragment: true,
-        },
-      });
+      if (agentErrorMessage) {
+        finalStatus = "error";
+        finalMessage = agentErrorMessage;
+      } else if (!isAgentCoreLogicSuccessful) {
+        finalStatus = "error";
+        finalMessage = "Agent execution did not complete successfully.";
+      } else if (!creditsConsumedSuccessfully) {
+        finalStatus = "error";
+      } else {
+        finalStatus = "completed";
+        finalMessage = "Fragment generated successfully!";
 
-      return { message: "Result saved, pending credit consumption" };
-    });
-
-    if (!isError) {
-      await step.run("consume-credits", async () => {
-        try {
-          await consumeCredits(event.data.userId, event.data.effectivePoints);
-
-          if (savedMsg) {
-            await publish(
-              fragmentChannel(event.data.userId).fragment({
-                projectId: event.data.projectId,
-                status: "completed",
-                message: "Fragment generated successfully!",
-                fragmentId: savedMsg.fragment?.id,
-                messageId: savedMsg.id,
-                sandboxUrl: savedMsg.fragment?.sandboxUrl,
-                title: savedMsg.fragment?.title,
-                timestamp,
-              })
-            );
-          } else {
-            console.error(
-              "Inngest: savedMsg was null after successful agent run and credit consumption attempt"
-            );
-          }
-        } catch (error: unknown) {
-          const errorMessageForUser =
-            error && typeof error === "object" && "message" in error
-              ? error.message
-              : "An unexpected error occurred while processing your credits.";
-
+        if (savedDbMsg && savedDbMsg.fragment) {
+          finalFragmentId = savedDbMsg.fragment.id;
+          finalMessageId = savedDbMsg.id;
+          finalTitle = savedDbMsg.fragment.title;
+        } else {
           console.error(
-            `Inngest: Failed to consume credits for user ${event.data.userId}:`,
-            error
+            "Invariant violation: savedDbMsg or fragment missing in successful path."
           );
 
-          await publish(
-            fragmentChannel(event.data.userId).error({
-              projectId: event.data.projectId,
-              status: "error",
-              message: `Generation completed, but there was an issue consuming credits. Reason: ${errorMessageForUser}. No credits were consumed.`,
-              timestamp: new Date(),
-            })
-          );
-
-          return { message: errorMessageForUser };
+          finalFragmentId = undefined;
+          finalMessageId = undefined;
+          finalTitle = undefined;
         }
-      });
+      }
+    } catch (e: unknown) {
+      finalStatus = "error";
+      finalMessage =
+        e && typeof e === "object" && "message" in e
+          ? `An unexpected error occurred: ${e.message}`
+          : "An unexpected error occurred during the generation process.";
+      console.error("Unhandled error in codeAgentFunction:", e);
+    }
+    if (finalStatus === "completed") {
+      void (await publish(
+        fragmentChannel(event.data.userId).completed({
+          projectId: event.data.projectId,
+          status: "completed",
+          message: finalMessage,
+          fragmentId: finalFragmentId,
+          messageId: finalMessageId!,
+          sandboxUrl: finalSandboxUrl,
+          title: finalTitle,
+          timestamp: finalTimestamp,
+        })
+      ));
     } else {
-      console.log(
-        `Inngest: Agent execution failed (isError was true), no credits consumed for ${event.data.userId}.`
-      );
-      return { message: "No credits consumed due to agent error" };
+      void (await publish(
+        fragmentChannel(event.data.userId).error({
+          projectId: event.data.projectId,
+          status: "error",
+          message: finalMessage,
+          timestamp: finalTimestamp,
+        })
+      ));
     }
 
     return {
-      url: sandboxUrl,
-      title: "Fragment",
-      files: result.state.data.files,
-      summary: result.state.data.summary,
+      url: finalSandboxUrl || "",
+      title: finalTitle || "Generation Result",
+      files: agentRunResult?.state?.data?.files || {},
+      summary: agentRunResult?.state?.data?.summary || "",
     };
   }
 );
