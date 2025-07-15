@@ -38,6 +38,18 @@ The Vibe AI App is an innovative web application that leverages advanced AI mode
   - [tRPC](https://trpc.io/) for building strongly typed end-to-end APIs.
 - **Database:** PostgreSQL (or any other relational database supported by Prisma).
 
+---
+
+## 🌐 Live Demo
+
+You can see the Vibe AI App running live before installing it locally. The production branch is publicly deployed on Vercel.
+
+**[Visit the Live Application Here](https://vibe-ai-app.vercel.app/)**
+
+_(Remember to replace `YOUR_VERCEL_APP_URL_GOES_HERE` with the actual URL of your deployed application on Vercel.)_
+
+---
+
 ## 🛠️ Getting Started
 
 ### Prerequisites
