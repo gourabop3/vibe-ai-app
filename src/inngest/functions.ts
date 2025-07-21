@@ -77,7 +77,7 @@ export const codeAgentFunction = inngest.createFunction(
 
     try {
       const sandboxId = await step.run("get-sandbox-id", async () => {
-        const sandbox = await Sandbox.create("vibe-ai-app-nextjs-v3");
+        const sandbox = await Sandbox.create("code-interpreter-v1");
         await sandbox.setTimeout(SANDBOX_TIMEOUT);
         return sandbox.sandboxId;
       });
