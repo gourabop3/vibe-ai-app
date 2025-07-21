@@ -77,7 +77,9 @@ export const codeAgentFunction = inngest.createFunction(
 
     try {
       const sandboxId = await step.run("get-sandbox-id", async () => {
-        const sandbox = await Sandbox.create("code-interpreter-v1");
+        const sandbox = await Sandbox.create("code-interpreter-v1", {
+          apiKey: process.env.E2B_API_KEY,
+        });
         await sandbox.setTimeout(SANDBOX_TIMEOUT);
         return sandbox.sandboxId;
       });
