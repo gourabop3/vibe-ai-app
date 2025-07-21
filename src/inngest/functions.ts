@@ -125,7 +125,7 @@ export const codeAgentFunction = inngest.createFunction(
         system: PROMPT,
         model: openai({
           apiKey: process.env.OPENAI_API_KEY,
-          model: "gpt-3.5-turbo",
+          model: "gpt-4.1",
           defaultParameters: {
             temperature: 0.1,
           },
