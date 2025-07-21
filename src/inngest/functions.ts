@@ -125,7 +125,7 @@ export const codeAgentFunction = inngest.createFunction(
         system: PROMPT,
         model: openai({
           apiKey: process.env.OPENAI_API_KEY,
-          model: "gpt-4.1",
+          model: "gpt-4o",
           defaultParameters: {
             temperature: 0.1,
           },
@@ -269,6 +269,7 @@ export const codeAgentFunction = inngest.createFunction(
         description: "A fragment title generator",
         system: FRAGMENT_TITLE_PROMPT,
         model: openai({
+          apiKey: process.env.OPENAI_API_KEY,
           model: "gpt-4o",
         }),
       });
@@ -278,6 +279,7 @@ export const codeAgentFunction = inngest.createFunction(
         description: "A response generator",
         system: RESPONSE_PROMPT,
         model: openai({
+          apiKey: process.env.OPENAI_API_KEY,
           model: "gpt-4o",
         }),
       });
