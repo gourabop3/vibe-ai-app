@@ -3,7 +3,6 @@ import { z } from "zod";
 import { Sandbox } from "@e2b/code-interpreter";
 import { channel, topic } from "@inngest/realtime";
 import {
-  openai,
   createAgent,
   createTool,
   createNetwork,
@@ -55,6 +54,25 @@ export const fragmentChannel = channel((userId: string) => `user:${userId}`)
       })
     )
   );
+
+// Gemini API call helper
+async function geminiGenerateContent(prompt: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
+  const body = {
+    contents: [
+      { parts: [{ text: prompt }] }
+    ]
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json();
+  // Gemini returns candidates[0].content.parts[0].text
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
 
 export const codeAgentFunction = inngest.createFunction(
   { id: "code-agent" },
@@ -123,13 +141,9 @@ export const codeAgentFunction = inngest.createFunction(
         name: "code-agent",
         description: "An expert coding agent",
         system: PROMPT,
-        model: openai({
-          apiKey: process.env.OPENAI_API_KEY,
-          model: "gpt-3.5-turbo",
-          defaultParameters: {
-            temperature: 0.1,
-          },
-        }),
+        model: async (input: string) => {
+          return await geminiGenerateContent(input);
+        },
         tools: [
           createTool({
             name: "terminal",
@@ -268,18 +282,18 @@ export const codeAgentFunction = inngest.createFunction(
         name: "fragment-title-generator",
         description: "A fragment title generator",
         system: FRAGMENT_TITLE_PROMPT,
-        model: openai({
-          model: "gpt-4o",
-        }),
+        model: async (input: string) => {
+          return await geminiGenerateContent(input);
+        },
       });
 
       const responseGenerator = createAgent<AgentState>({
         name: "response-generator",
         description: "A response generator",
         system: RESPONSE_PROMPT,
-        model: openai({
-          model: "gpt-4o",
-        }),
+        model: async (input: string) => {
+          return await geminiGenerateContent(input);
+        },
       });
 
       const [{ output: fragmentTitleOutput }, { output: responseOutput }] =
